@@ -72,8 +72,7 @@ function getCountryName(countryCode) {
  */
 function showPhoneError(inputElement, errorMessage) {
     // Remover error anterior si existe
-    const existingError = inputElement.parentElement.querySelector('.phone-error');
-    if (existingError) existingError.remove();
+    clearPhoneError(inputElement);
     
     // Agregar clase de error al input
     inputElement.classList.add('input-error');
@@ -81,9 +80,10 @@ function showPhoneError(inputElement, errorMessage) {
     // Crear y mostrar mensaje de error
     const errorDiv = document.createElement('div');
     errorDiv.className = 'phone-error';
-    errorDiv.style.cssText = 'color: #e74c3c; font-size: 0.85rem; margin-top: 5px; font-weight: 500;';
+    errorDiv.style.cssText = 'color: #e74c3c; font-size: 0.85rem; margin-top: 4px; margin-bottom: 4px; font-weight: 500;';
     errorDiv.textContent = errorMessage;
-    inputElement.parentElement.appendChild(errorDiv);
+    // Insertar justo después del input, no al final del formulario
+    inputElement.insertAdjacentElement('afterend', errorDiv);
 }
 
 /**
@@ -91,8 +91,11 @@ function showPhoneError(inputElement, errorMessage) {
  */
 function clearPhoneError(inputElement) {
     inputElement.classList.remove('input-error');
-    const existingError = inputElement.parentElement.querySelector('.phone-error');
-    if (existingError) existingError.remove();
+    // Buscar el error justo después del input
+    const nextEl = inputElement.nextElementSibling;
+    if (nextEl && nextEl.classList.contains('phone-error')) {
+        nextEl.remove();
+    }
 }
 
 // ========================================
@@ -507,12 +510,25 @@ function setupWhatsApp() {
             
             const nombre = document.getElementById('ws-nombre').value;
             const email = document.getElementById('ws-email').value;
-            const telefono = document.getElementById('ws-phone').value;
+            const telefonoInput = document.getElementById('ws-phone');
+            const telefono = telefonoInput.value;
             const cuandoComprar = document.getElementById('ws-cuando-comprar').value;
             const mensaje = document.getElementById('ws-mensaje').value;
             
+            // VALIDAR NÚMERO DE TELÉFONO CON LIBPHONENUMBER-JS
+            const phoneValidation = validatePhoneNumber(telefono, 'CL');
+            
+            if (!phoneValidation.isValid) {
+                showPhoneError(telefonoInput, phoneValidation.error);
+                return; // No enviar el formulario
+            } else {
+                clearPhoneError(telefonoInput);
+            }
+            
+            const telefonoFormateado = phoneValidation.formatted;
+            
             const numeroWhatsApp = '56940329987';
-            const textoMensaje = `¡Hola Diego! Visité la página de *Mirador de Villarrica* y me interesa el proyecto _www.miradordevillarrica.cl_\n\n*Mis datos:*\nNombre: ${nombre}\nEmail: ${email}\nTeléfono: ${telefono}\n¿Cuándo comprar?: ${cuandoComprar}\nMensaje: ${mensaje}\n\n¿Me podrías dar más info?`;
+            const textoMensaje = `¡Hola Diego! Visité la página de *Mirador de Villarrica* y me interesa el proyecto _www.miradordevillarrica.cl_\n\n*Mis datos:*\nNombre: ${nombre}\nEmail: ${email}\nTeléfono: ${telefonoFormateado}\n¿Cuándo comprar?: ${cuandoComprar}\nMensaje: ${mensaje}\n\n¿Me podrías dar más info?`;
             
             const enlaceWhatsApp = `https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(textoMensaje)}`;
             
@@ -528,7 +544,9 @@ function setupWhatsApp() {
                 body: JSON.stringify({
                     nombre,
                     email,
-                    telefono,
+                    telefono: telefonoFormateado,
+                    telefonoRaw: telefono,
+                    pais: phoneValidation.country,
                     cuandoComprar,
                     mensaje,
                     timestamp: new Date().toISOString(),
@@ -610,55 +628,4 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Función para formatear números telefónicos chilenos
-function formatChileanPhoneNumber(input) {
-    // Remover todos los caracteres que no sean números
-    let value = input.value.replace(/\D/g, '');
-    
-    // Limitar a 9 dígitos para números locales o 12 para números con código país
-    if (value.startsWith('56')) {
-        value = value.substring(0, 11); // +56 9 XXXX XXXX = 11 dígitos
-    } else {
-        value = value.substring(0, 9); // 9 XXXX XXXX = 9 dígitos
-    }
-    
-    // Formatear según cantidad de dígitos
-    if (value.length <= 1) {
-        input.value = value;
-    } else if (value.length <= 4) {
-        input.value = value.substring(0, 1) + ' ' + value.substring(1);
-    } else if (value.length <= 8) {
-        input.value = value.substring(0, 1) + ' ' + value.substring(1, 5) + ' ' + value.substring(5);
-    } else {
-        input.value = value.substring(0, 1) + ' ' + value.substring(1, 5) + ' ' + value.substring(5, 9);
-    }
-}
 
-// Aplicar formato a todos los inputs de teléfono
-document.addEventListener('DOMContentLoaded', function() {
-    const phoneInputs = document.querySelectorAll('.phone-input');
-    
-    phoneInputs.forEach(input => {
-        // Permitir solo números y algunos caracteres
-        input.addEventListener('input', function(e) {
-            formatChileanPhoneNumber(this);
-        });
-        
-        // Evitar caracteres no numéricos
-        input.addEventListener('keypress', function(e) {
-            const char = String.fromCharCode(e.which);
-            if (!/[0-9+\s\-()]/g.test(char)) {
-                e.preventDefault();
-            }
-        });
-        
-        // Pegar solo números
-        input.addEventListener('paste', function(e) {
-            e.preventDefault();
-            const text = (e.clipboardData || window.clipboardData).getData('text');
-            const numbersOnly = text.replace(/\D/g, '');
-            this.value = numbersOnly;
-            formatChileanPhoneNumber(this);
-        });
-    });
-});
