@@ -8,33 +8,37 @@
  */
 function validatePhoneNumber(phoneNumber, countryCode = 'CL') {
     try {
-        // Limpiar espacios en blanco
         const cleanNumber = phoneNumber.trim();
         
         if (!cleanNumber) {
             return { isValid: false, formatted: '', error: 'Por favor ingresa un número de teléfono' };
         }
+
+        // Usar la API moderna de libphonenumber-js
+        const parsed = libphonenumber.parsePhoneNumber(cleanNumber, countryCode);
         
-        // Usar libphonenumber-js
-        const parsed = libphonenumber.parse(cleanNumber, countryCode);
-        const isValid = libphonenumber.isValidNumber(parsed);
-        
-        if (!isValid) {
-            return { 
-                isValid: false, 
-                formatted: '', 
-                error: `Número de teléfono inválido para ${countryCode}` 
-            };
+        if (!parsed || !parsed.isValid()) {
+            // Dar mensaje más específico usando validatePhoneNumberLength
+            const lengthError = libphonenumber.validatePhoneNumberLength(cleanNumber, countryCode);
+            let errorMsg = 'Número de teléfono inválido';
+            if (lengthError === 'TOO_SHORT') {
+                errorMsg = 'El número de teléfono es muy corto';
+            } else if (lengthError === 'TOO_LONG') {
+                errorMsg = 'El número de teléfono es muy largo';
+            } else if (lengthError === 'NOT_A_NUMBER') {
+                errorMsg = 'Ingresa solo números';
+            }
+            return { isValid: false, formatted: '', error: errorMsg };
         }
-        
-        // Formatear en formato internacional
-        const formatted = libphonenumber.format(parsed, 'INTERNATIONAL');
-        const countryName = getCountryName(parsed.country);
+
+        const formatted = parsed.formatInternational();
+        const country = parsed.country;
+        const countryName = getCountryName(country);
         
         return { 
             isValid: true, 
             formatted: formatted,
-            country: parsed.country,
+            country: country,
             countryName: countryName,
             error: null 
         };
@@ -71,32 +75,75 @@ function getCountryName(countryCode) {
  * Crea un elemento de error para mostrar en el formulario
  */
 function showPhoneError(inputElement, errorMessage) {
-    // Remover error anterior si existe
-    clearPhoneError(inputElement);
-    
-    // Agregar clase de error al input
+    clearPhoneMessage(inputElement);
     inputElement.classList.add('input-error');
+    inputElement.classList.remove('input-valid');
     
-    // Crear y mostrar mensaje de error
     const errorDiv = document.createElement('div');
-    errorDiv.className = 'phone-error';
-    errorDiv.style.cssText = 'color: #e74c3c; font-size: 0.85rem; margin-top: 4px; margin-bottom: 4px; font-weight: 500;';
-    errorDiv.textContent = errorMessage;
-    // Insertar justo después del input, no al final del formulario
+    errorDiv.className = 'phone-message phone-error';
+    errorDiv.innerHTML = '✗ ' + errorMessage;
     inputElement.insertAdjacentElement('afterend', errorDiv);
 }
 
 /**
- * Remueve los errores del teléfono
+ * Muestra mensaje de éxito con check verde y número formateado
  */
-function clearPhoneError(inputElement) {
+function showPhoneSuccess(inputElement, formattedNumber) {
+    clearPhoneMessage(inputElement);
     inputElement.classList.remove('input-error');
-    // Buscar el error justo después del input
+    inputElement.classList.add('input-valid');
+    
+    const successDiv = document.createElement('div');
+    successDiv.className = 'phone-message phone-valid';
+    successDiv.innerHTML = '✓ ' + formattedNumber;
+    inputElement.insertAdjacentElement('afterend', successDiv);
+}
+
+/**
+ * Remueve cualquier mensaje (error o éxito) del teléfono
+ */
+function clearPhoneMessage(inputElement) {
+    inputElement.classList.remove('input-error', 'input-valid');
     const nextEl = inputElement.nextElementSibling;
-    if (nextEl && nextEl.classList.contains('phone-error')) {
+    if (nextEl && nextEl.classList.contains('phone-message')) {
         nextEl.remove();
     }
 }
+
+/**
+ * Inicializa validación en tiempo real para todos los inputs de teléfono
+ */
+function initPhoneValidation() {
+    const phoneInputs = document.querySelectorAll('.phone-input');
+    
+    phoneInputs.forEach(function(input) {
+        // Validar cuando el usuario sale del campo (blur)
+        input.addEventListener('blur', function() {
+            const value = this.value.trim();
+            if (value.length > 0) {
+                const result = validatePhoneNumber(value, 'CL');
+                if (!result.isValid) {
+                    showPhoneError(this, result.error);
+                } else {
+                    showPhoneSuccess(this, result.formatted);
+                }
+            } else {
+                clearPhoneMessage(this);
+            }
+        });
+        
+        // Limpiar mensaje cuando el usuario empieza a escribir de nuevo
+        input.addEventListener('input', function() {
+            const nextEl = this.nextElementSibling;
+            if (nextEl && nextEl.classList.contains('phone-message')) {
+                clearPhoneMessage(this);
+            }
+        });
+    });
+}
+
+// Inicializar validación cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', initPhoneValidation);
 
 // ========================================
 
@@ -263,7 +310,7 @@ if (contactForm) {
             showPhoneError(telefonoInput, phoneValidation.error);
             return; // No enviar el formulario
         } else {
-            clearPhoneError(telefonoInput);
+            showPhoneSuccess(telefonoInput, phoneValidation.formatted);
         }
 
         const data = {
@@ -522,7 +569,7 @@ function setupWhatsApp() {
                 showPhoneError(telefonoInput, phoneValidation.error);
                 return; // No enviar el formulario
             } else {
-                clearPhoneError(telefonoInput);
+                showPhoneSuccess(telefonoInput, phoneValidation.formatted);
             }
             
             const telefonoFormateado = phoneValidation.formatted;
